@@ -1,10 +1,14 @@
 # Zero-dependency Node 20 runtime. The project has no `npm install` step —
 # everything lives in `node:*` builtins — so this image is effectively
 # Node + source, nothing else.
-FROM node:20-alpine
+ARG NODE_IMAGE=node:20-alpine
+FROM ${NODE_IMAGE}
 
-# Non-root user for the app
-RUN addgroup -S app && adduser -S app -G app
+# Non-root user for the app. Keep the UID/GID stable so host bind mounts can
+# be chowned once by install scripts and remain writable across image updates.
+ARG APP_UID=10001
+ARG APP_GID=10001
+RUN addgroup -S -g "${APP_GID}" app && adduser -S -D -H -u "${APP_UID}" -G app app
 
 WORKDIR /app
 
@@ -16,7 +20,6 @@ COPY --chown=app:app docs ./docs
 
 # The Language Server binary is NOT bundled (closed-source Windsurf release);
 # mount it at runtime. See docker-compose.yml for the bind-mount example.
-ENV LS_BINARY_PATH=/opt/windsurf/language_server_linux_x64
 ENV PORT=3003
 ENV LS_PORT=42100
 ENV LOG_LEVEL=info

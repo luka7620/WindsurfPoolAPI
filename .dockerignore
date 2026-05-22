@@ -6,6 +6,7 @@ node_modules
 .env
 accounts.json
 proxy-config.json
+proxy.json
 model-access.json
 stats.json
 runtime-config.json

@@ -4,6 +4,7 @@
  */
 
 import { config, log } from '../config.js';
+import { adminAuthFailure, createAdminSessionCookie, isAdminAuthConfigured, validateAdminRequest } from '../admin-auth.js';
 import {
   getAccountList, getAccountCount, addAccountByKey, addAccountByToken,
   removeAccount, setAccountStatus, resetAccountErrors, updateAccountLabel,
@@ -25,25 +26,20 @@ import { windsurfLogin, refreshFirebaseToken, reRegisterWithCodeium } from './wi
 import { getModelAccessConfig, setModelAccessMode, setModelAccessList, addModelToList, removeModelFromList } from './model-access.js';
 import { checkMessageRateLimit } from '../windsurf-api.js';
 
-function json(res, status, body) {
+function json(res, status, body, extraHeaders = {}) {
   const data = JSON.stringify(body);
   res.writeHead(status, {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-Dashboard-Password',
+    ...extraHeaders,
   });
   res.end(data);
 }
 
 function checkAuth(req) {
-  const pw = req.headers['x-dashboard-password'] || '';
-  // If dashboard password is set, use it
-  if (config.dashboardPassword) return pw === config.dashboardPassword;
-  // Otherwise fall back to API key (if set)
-  if (config.apiKey) return pw === config.apiKey;
-  // No password and no API key = open access
-  return true;
+  return validateAdminRequest(req);
 }
 
 /**
@@ -54,14 +50,16 @@ export async function handleDashboardApi(method, subpath, body, req, res) {
 
   // Auth check (except for auth verification endpoint)
   if (subpath !== '/auth' && !checkAuth(req)) {
-    return json(res, 401, { error: 'Unauthorized. Set X-Dashboard-Password header.' });
+    const failure = adminAuthFailure();
+    return json(res, failure.status, failure.body);
   }
 
   // ─── Auth ─────────────────────────────────────────────
   if (subpath === '/auth') {
-    const needsAuth = !!(config.dashboardPassword || config.apiKey);
-    if (!needsAuth) return json(res, 200, { required: false });
-    return json(res, 200, { required: true, valid: checkAuth(req) });
+    const configured = isAdminAuthConfigured();
+    const valid = configured && checkAuth(req);
+    const headers = valid ? { 'Set-Cookie': createAdminSessionCookie() } : {};
+    return json(res, 200, { required: true, configured, valid }, headers);
   }
 
   // ─── Overview ─────────────────────────────────────────

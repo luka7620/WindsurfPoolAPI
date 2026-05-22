@@ -103,13 +103,55 @@ node src/index.js
 
 Dashboard: `http://localhost:3003/dashboard`
 
+Set `DASHBOARD_PASSWORD` before exposing the service. The dashboard API and
+`/auth/*` account-management routes refuse access when no admin credential is
+configured. If `DASHBOARD_PASSWORD` is empty, `API_KEY` is accepted as a
+fallback admin credential.
+
 ### Docker
 
 ```bash
-docker compose up -d --build
+cp .env.example .env
+docker compose up -d
 ```
 
-Mount the LS binary at `/opt/windsurf/` on the host before starting.
+The default compose file pulls `luka762/windsurfpool:latest` from Docker Hub. Mount
+the Windsurf Language Server under `/opt/windsurf/` on the host before
+starting. On ARM Linux the default binary path is
+`/opt/windsurf/language_server_linux_arm`.
+
+### Docker + systemd (ARM server)
+
+Install Docker on the server, place the Windsurf Language Server binary under
+`/opt/windsurf`, then install the service:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/luka7620/WindsurfPoolAPI/main/deploy/install.sh | sudo bash
+```
+
+Configuration lives in the Docker deploy directory: `/opt/windsurfpool/.env`.
+Edit it and restart:
+
+```bash
+sudo nano /opt/windsurfpool/.env
+sudo systemctl restart windsurfpool
+```
+
+Common commands:
+
+```bash
+# Check status
+sudo systemctl status windsurfpool
+
+# View logs
+sudo journalctl -u windsurfpool -f
+
+# Restart service
+sudo systemctl restart windsurfpool
+
+# Uninstall
+curl -sSL https://raw.githubusercontent.com/luka7620/WindsurfPoolAPI/main/deploy/install.sh | sudo bash -s -- uninstall -y
+```
 
 ---
 
@@ -127,18 +169,22 @@ Mount the LS binary at `/opt/windsurf/` on the host before starting.
 # ✅ Add account via Token (recommended / 推荐)
 curl -X POST http://localhost:3003/auth/login \
   -H "Content-Type: application/json" \
+  -H "X-Dashboard-Password: your-admin-password" \
   -d '{"token": "your-windsurf-token"}'
 
 # Batch add / 批量添加
 curl -X POST http://localhost:3003/auth/login \
   -H "Content-Type: application/json" \
+  -H "X-Dashboard-Password: your-admin-password" \
   -d '{"accounts": [{"token": "t1"}, {"token": "t2"}]}'
 
 # List accounts / 列出账号
-curl http://localhost:3003/auth/accounts
+curl http://localhost:3003/auth/accounts \
+  -H "X-Dashboard-Password: your-admin-password"
 
 # Remove / 删除
-curl -X DELETE http://localhost:3003/auth/accounts/{id}
+curl -X DELETE http://localhost:3003/auth/accounts/{id} \
+  -H "X-Dashboard-Password: your-admin-password"
 ```
 
 ---
@@ -177,17 +223,18 @@ curl http://localhost:3003/v1/messages \
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `PORT` | `3003` | HTTP server port |
-| `API_KEY` | _(empty)_ | Auth key for `/v1/*` endpoints. Empty = open access |
-| `DASHBOARD_PASSWORD` | _(empty)_ | Dashboard admin password |
+| `API_KEY` | _(empty)_ | Auth key for `/v1/*` endpoints. Empty = open access. Also used as admin fallback if `DASHBOARD_PASSWORD` is empty |
+| `DASHBOARD_PASSWORD` | _(empty)_ | Admin password for `/dashboard/api/*` and `/auth/*` management routes |
 | `DEFAULT_MODEL` | `claude-4.5-sonnet-thinking` | Default model when none specified |
 | `MAX_TOKENS` | `8192` | Default max output tokens |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
-| `LS_BINARY_PATH` | `/opt/windsurf/language_server_linux_x64` | Language Server path |
+| `LS_BINARY_PATH` | auto-detected, ARM example `/opt/windsurf/language_server_linux_arm` | Language Server path |
 | `LS_PORT` | `42100` | Language Server gRPC port |
 
 ### Dashboard API
 
-All endpoints require `X-Dashboard-Password` header.
+All endpoints require `X-Dashboard-Password` header. If `DASHBOARD_PASSWORD` is
+not set, the same header may contain `API_KEY` as a fallback.
 
 | Method | Path | Description |
 | :--- | :--- | :--- |
@@ -362,7 +409,7 @@ See `ARCHITECTURE.md` for module-level details.
 ## ❓ FAQ / 常见问题
 
 **Q: `LS binary not found` on startup?**
-A: Ensure the binary exists at `/opt/windsurf/language_server_linux_x64` (or set `LS_BINARY_PATH`).
+A: Ensure the binary exists under `/opt/windsurf` and `LS_BINARY_PATH` matches your server architecture, for example `/opt/windsurf/language_server_linux_arm` on ARM Linux.
 
 **Q: `No accounts available`?**
 A: Add at least one account via Dashboard or `POST /auth/login`.

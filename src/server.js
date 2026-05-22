@@ -27,6 +27,7 @@ import { handleDashboardApi } from './dashboard/api.js';
 import { config, log } from './config.js';
 import { callerKeyFromRequest } from './caller-key.js';
 import { VERSION } from './version.js';
+import { adminAuthFailure, validateAdminRequest } from './admin-auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,9 +56,16 @@ function json(res, status, body) {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Dashboard-Password, x-api-key, anthropic-version, anthropic-beta',
   });
   res.end(data);
+}
+
+function requireAdmin(req, res) {
+  if (validateAdminRequest(req)) return true;
+  const failure = adminAuthFailure();
+  json(res, failure.status, failure.body);
+  return false;
 }
 
 async function route(req, res) {
@@ -99,24 +107,28 @@ async function route(req, res) {
     return handleDashboardApi(method, subpath, body, req, res);
   }
 
-  // ─── Auth management (no API key required) ─────────────
+  // ─── Auth management (admin auth required) ─────────────
 
   if (path === '/auth/status') {
+    if (!requireAdmin(req, res)) return;
     return json(res, 200, { authenticated: isAuthenticated(), ...getAccountCount() });
   }
 
   if (path === '/auth/accounts' && method === 'GET') {
+    if (!requireAdmin(req, res)) return;
     return json(res, 200, { accounts: getAccountList() });
   }
 
   // DELETE /auth/accounts/:id
   if (path.startsWith('/auth/accounts/') && method === 'DELETE') {
+    if (!requireAdmin(req, res)) return;
     const id = path.split('/')[3];
     const ok = removeAccount(id);
     return json(res, ok ? 200 : 404, { success: ok });
   }
 
   if (path === '/auth/login' && method === 'POST') {
+    if (!requireAdmin(req, res)) return;
     let body;
     try { body = JSON.parse(await readBody(req)); } catch {
       return json(res, 400, { error: 'Invalid JSON' });
