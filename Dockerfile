@@ -1,14 +1,15 @@
 # Zero-dependency Node 20 runtime. The project has no `npm install` step —
 # everything lives in `node:*` builtins — so this image is effectively
 # Node + source, nothing else.
-ARG NODE_IMAGE=node:20-alpine
+ARG NODE_IMAGE=node:20-bookworm-slim
 FROM ${NODE_IMAGE}
 
 # Non-root user for the app. Keep the UID/GID stable so host bind mounts can
 # be chowned once by install scripts and remain writable across image updates.
 ARG APP_UID=10001
 ARG APP_GID=10001
-RUN addgroup -S -g "${APP_GID}" app && adduser -S -D -H -u "${APP_UID}" -G app app
+RUN groupadd --system --gid "${APP_GID}" app \
+    && useradd --system --uid "${APP_UID}" --gid app --home-dir /app --shell /usr/sbin/nologin app
 
 WORKDIR /app
 
@@ -35,6 +36,6 @@ EXPOSE 3003
 # Simple healthcheck — /health is served by the HTTP server even when the
 # account pool is empty.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3003/health || exit 1
+  CMD node -e "fetch('http://127.0.0.1:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "src/index.js"]
