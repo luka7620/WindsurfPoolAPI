@@ -2,9 +2,9 @@
 set -euo pipefail
 
 SERVICE_NAME="${SERVICE_NAME:-windsurfpool}"
-DEPLOY_DIR="${DEPLOY_DIR:-/opt/windsurfpool}"
-STATE_DIR="${STATE_DIR:-${DEPLOY_DIR}/state}"
-ENV_FILE="${ENV_FILE:-${DEPLOY_DIR}/.env}"
+DEPLOY_DIR="${DEPLOY_DIR:-$(pwd)}"
+STATE_DIR="${STATE_DIR:-}"
+ENV_FILE="${ENV_FILE:-}"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 DEFAULT_IMAGE="${WINDSURFPOOL_IMAGE:-luka762/windsurfpool:latest}"
 APP_UID="${APP_UID:-10001}"
@@ -20,8 +20,8 @@ Usage: install.sh [install|uninstall] [-y] [--purge]
 
 Environment overrides:
   SERVICE_NAME=windsurfpool
-  DEPLOY_DIR=/opt/windsurfpool
-  STATE_DIR=/opt/windsurfpool/state
+  DEPLOY_DIR=$(pwd)
+  STATE_DIR=\${DEPLOY_DIR}/state
   WINDSURFPOOL_IMAGE=${DEFAULT_IMAGE}
 USAGE
 }
@@ -69,6 +69,23 @@ ensure_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Required command not found: $1" >&2
     exit 1
+  fi
+}
+
+normalize_paths() {
+  install -d -m 0755 "$DEPLOY_DIR"
+  DEPLOY_DIR="$(cd "$DEPLOY_DIR" && pwd)"
+
+  if [ -z "$STATE_DIR" ]; then
+    STATE_DIR="${DEPLOY_DIR}/state"
+  elif [ "${STATE_DIR#/}" = "$STATE_DIR" ]; then
+    STATE_DIR="${DEPLOY_DIR}/${STATE_DIR}"
+  fi
+
+  if [ -z "$ENV_FILE" ]; then
+    ENV_FILE="${DEPLOY_DIR}/.env"
+  elif [ "${ENV_FILE#/}" = "$ENV_FILE" ]; then
+    ENV_FILE="${DEPLOY_DIR}/${ENV_FILE}"
   fi
 }
 
@@ -164,6 +181,7 @@ install_service() {
 
   local ls_path
   local docker_bin
+  normalize_paths
   ls_path="$(detect_ls_binary)"
   docker_bin="${DOCKER_BIN:-$(command -v docker)}"
   write_env_file "$ls_path"
@@ -189,6 +207,7 @@ install_service() {
 
 uninstall_service() {
   require_root
+  normalize_paths
   if ! confirm "Uninstall ${SERVICE_NAME}?"; then
     echo "Cancelled."
     exit 0

@@ -122,18 +122,21 @@ starting. On ARM Linux the default binary path is
 
 ### Docker + systemd (ARM server)
 
-Install Docker on the server, place the Windsurf Language Server binary under
-`/opt/windsurf`, then install the service:
+Install Docker on the server, create a deploy directory, place the Windsurf
+Language Server binary under `/opt/windsurf`, then install the service from
+that deploy directory:
 
 ```bash
+mkdir -p ~/windsurfpool
+cd ~/windsurfpool
 curl -sSL https://raw.githubusercontent.com/luka7620/WindsurfPoolAPI/main/deploy/install.sh | sudo bash
 ```
 
-Configuration lives in the Docker deploy directory: `/opt/windsurfpool/.env`.
-Edit it and restart:
+Configuration lives in the directory where you ran the install command. For the
+example above, edit `~/windsurfpool/.env` and restart:
 
 ```bash
-sudo nano /opt/windsurfpool/.env
+nano ~/windsurfpool/.env
 sudo systemctl restart windsurfpool
 ```
 
