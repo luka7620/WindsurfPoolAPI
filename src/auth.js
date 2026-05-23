@@ -23,6 +23,18 @@ const accounts = [];
 let _roundRobinIndex = 0;
 let _refreshTimerStarted = false;
 
+export function normalizeImportedAccount(raw = {}) {
+  if (!raw || typeof raw !== 'object') return null;
+  const apiKey = raw.apiKey || raw.api_key || raw.key || raw.codeium_api_key || raw.CODEIUM_API_KEY || '';
+  const token = raw.token || raw.auth_token || raw.authToken || raw.session_token || raw.sessionToken || raw.CODEIUM_AUTH_TOKEN || '';
+  const refreshToken = raw.refreshToken || raw.refresh_token || raw.firebase_refresh_token || '';
+  const label = raw.label || raw.email || raw.name || raw.user_id || raw.account_id || '';
+  if (apiKey) return { type: 'api_key', apiKey: String(apiKey).trim(), label: String(label || '').trim() };
+  if (refreshToken) return { type: 'refresh_token', refreshToken: String(refreshToken).trim(), label: String(label || '').trim() };
+  if (token) return { type: 'token', token: String(token).trim(), label: String(label || '').trim() };
+  return null;
+}
+
 // Per-tier requests-per-minute limits. Used for both filter-by-cap and
 // weighted selection (accounts with more headroom are preferred).
 const TIER_RPM = { pro: 60, free: 10, unknown: 20, expired: 0 };
@@ -119,7 +131,7 @@ async function registerWithCodeium(idToken) {
 /**
  * Add account via API key.
  */
-export function addAccountByKey(apiKey, label = '') {
+export function addAccountByKey(apiKey, label = '', opts = {}) {
   const existing = accounts.find(a => a.apiKey === apiKey);
   if (existing) return existing;
 
@@ -145,8 +157,41 @@ export function addAccountByKey(apiKey, label = '') {
   accounts.push(account);
   saveAccounts();
   log.info(`Account added: ${account.id} (${account.email}) [api_key]`);
-  fetchAndMergeModelCatalog().catch(e => log.warn(`Auto model-catalog refresh: ${e.message}`));
+  if (!opts.skipCatalogRefresh) {
+    fetchAndMergeModelCatalog().catch(e => log.warn(`Auto model-catalog refresh: ${e.message}`));
+  }
   return account;
+}
+
+export async function importAccounts(input) {
+  const items = Array.isArray(input) ? input : (Array.isArray(input?.accounts) ? input.accounts : []);
+  const results = [];
+  for (const raw of items) {
+    const normalized = normalizeImportedAccount(raw);
+    if (!normalized) {
+      results.push({ ok: false, email: raw?.email || '', error: 'Missing api_key, token, session_token, or refresh_token' });
+      continue;
+    }
+    try {
+      let account;
+      if (normalized.type === 'api_key') {
+        account = addAccountByKey(normalized.apiKey, normalized.label, { skipCatalogRefresh: true });
+      } else if (normalized.type === 'refresh_token') {
+        account = await addAccountByRefreshToken(normalized.refreshToken, normalized.label);
+      } else {
+        account = await addAccountByToken(normalized.token, normalized.label);
+      }
+      results.push({ ok: true, id: account.id, email: account.email, method: account.method, status: account.status });
+    } catch (err) {
+      results.push({ ok: false, email: raw?.email || normalized.label || '', error: err.message });
+    }
+  }
+  const imported = results.filter(r => r.ok).length;
+  const failed = results.length - imported;
+  if (imported > 0) {
+    fetchAndMergeModelCatalog().catch(e => log.warn(`Post-import model-catalog refresh: ${e.message}`));
+  }
+  return { success: failed === 0, imported, failed, total: results.length, results };
 }
 
 /**

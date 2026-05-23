@@ -1393,6 +1393,11 @@ tbody tr:hover td { background: var(--surface-2); }
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           全部探测
         </button>
+        <button class="btn btn-outline" onclick="document.getElementById('accounts-import-file').click()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+          导入JSON
+        </button>
+        <input id="accounts-import-file" type="file" accept="application/json,.json" style="display:none" onchange="App.importAccounts(event)">
       </div>
     </div>
 
@@ -2629,6 +2634,26 @@ const App = {
     const r = await this.api('POST', '/accounts', body);
     if (r.success) { this.toast('账号已添加'); document.getElementById('acc-key').value = ''; document.getElementById('acc-label').value = ''; this.loadAccounts(); }
     else this.toast(r.error || '添加失败', 'error');
+  },
+
+  async importAccounts(event) {
+    const input = event?.target;
+    const file = input?.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const r = await this.api('POST', '/accounts/import', payload);
+      if (input) input.value = '';
+      if (r.error) return this.toast(r.error, 'error');
+      const imported = r.imported || 0;
+      const failed = r.failed || 0;
+      this.toast(`导入完成：成功 ${imported} 个，失败 ${failed} 个`, failed ? 'error' : 'success');
+      this.loadAccounts();
+    } catch (e) {
+      if (input) input.value = '';
+      this.toast('导入失败: ' + e.message, 'error');
+    }
   },
 
   async toggleAccount(id, status) { await this.api('PATCH', `/accounts/${id}`, { status }); this.loadAccounts(); },

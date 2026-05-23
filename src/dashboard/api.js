@@ -6,12 +6,13 @@
 import { config, log } from '../config.js';
 import { adminAuthFailure, createAdminSessionCookie, isAdminAuthConfigured, validateAdminRequest } from '../admin-auth.js';
 import {
-  getAccountList, getAccountCount, addAccountByKey, addAccountByToken,
+  getAccountList, getAccountCount, addAccountByKey, addAccountByToken, addAccountByRefreshToken,
   removeAccount, setAccountStatus, resetAccountErrors, updateAccountLabel,
   isAuthenticated, probeAccount, ensureLsForAccount,
   refreshCredits, refreshAllCredits,
   setAccountBlockedModels, fetchAndMergeModelCatalog,
   setAccountTokens,
+  importAccounts,
 } from '../auth.js';
 import { restartLsForProxy } from '../langserver.js';
 import { getLsStatus, stopLanguageServer, startLanguageServer, isLanguageServerRunning } from '../langserver.js';
@@ -132,8 +133,12 @@ export async function handleDashboardApi(method, subpath, body, req, res) {
         account = addAccountByKey(body.api_key, body.label);
       } else if (body.token) {
         account = await addAccountByToken(body.token, body.label);
+      } else if (body.session_token) {
+        account = await addAccountByToken(body.session_token, body.label);
+      } else if (body.refresh_token) {
+        account = await addAccountByRefreshToken(body.refresh_token, body.label);
       } else {
-        return json(res, 400, { error: 'Provide api_key or token' });
+        return json(res, 400, { error: 'Provide api_key, token, session_token, or refresh_token' });
       }
       // Fire-and-forget probe so the UI gets tier info shortly after add
       probeAccount(account.id).catch(e => log.warn(`Auto-probe failed: ${e.message}`));
@@ -148,6 +153,19 @@ export async function handleDashboardApi(method, subpath, body, req, res) {
   }
 
   // POST /accounts/probe-all — probe every active account
+  if (subpath === '/accounts/import' && method === 'POST') {
+    try {
+      const result = await importAccounts(body);
+      log.info(`Account import: imported=${result.imported} failed=${result.failed} total=${result.total}`);
+      return json(res, result.imported > 0 || result.total === 0 ? 200 : 400, {
+        ...result,
+        counts: getAccountCount(),
+      });
+    } catch (err) {
+      return json(res, 400, { error: err.message });
+    }
+  }
+
   if (subpath === '/accounts/probe-all' && method === 'POST') {
     const list = getAccountList().filter(a => a.status === 'active');
     const results = [];

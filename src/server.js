@@ -18,6 +18,7 @@ import { dirname, join } from 'path';
 import {
   validateApiKey, isAuthenticated, getAccountList, getAccountCount,
   addAccountByEmail, addAccountByToken, addAccountByKey, addAccountByRefreshToken, removeAccount,
+  importAccounts,
 } from './auth.js';
 import { handleChatCompletions } from './handlers/chat.js';
 import { handleModels } from './handlers/models.js';
@@ -136,29 +137,9 @@ async function route(req, res) {
 
     try {
       // Support batch: { accounts: [{email,password}, ...] }
-      if (Array.isArray(body.accounts)) {
-        const results = [];
-        for (const acct of body.accounts) {
-          try {
-            let result;
-            if (acct.api_key) {
-              result = addAccountByKey(acct.api_key, acct.label);
-            } else if (acct.token) {
-              result = await addAccountByToken(acct.token, acct.label);
-            } else if (acct.refresh_token) {
-              result = await addAccountByRefreshToken(acct.refresh_token, acct.label);
-            } else if (acct.email && acct.password) {
-              result = await addAccountByEmail(acct.email, acct.password);
-            } else {
-              results.push({ error: 'Missing credentials' });
-              continue;
-            }
-            results.push({ id: result.id, email: result.email, status: result.status });
-          } catch (err) {
-            results.push({ email: acct.email, error: err.message });
-          }
-        }
-        return json(res, 200, { results, ...getAccountCount() });
+      if (Array.isArray(body.accounts) || Array.isArray(body)) {
+        const result = await importAccounts(body);
+        return json(res, 200, { ...result, ...getAccountCount() });
       }
 
       // Single account
