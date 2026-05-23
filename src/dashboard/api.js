@@ -218,6 +218,23 @@ export async function handleDashboardApi(method, subpath, body, req, res) {
     return json(res, 200, { success: true, results });
   }
 
+  if (subpath === '/accounts/batch-delete' && method === 'POST') {
+    const { ids } = body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return json(res, 400, { error: 'Provide ids[]' });
+    }
+    const results = ids.map(id => {
+      const ok = removeAccount(id);
+      return { id, ok };
+    });
+    return json(res, 200, {
+      success: true,
+      deleted: results.filter(r => r.ok).length,
+      failed: results.filter(r => !r.ok).length,
+      results,
+    });
+  }
+
   // PATCH /accounts/:id
   const accountPatch = subpath.match(/^\/accounts\/([^/]+)$/);
   if (accountPatch && method === 'PATCH') {
